@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Crypto Signals Processor</title>
+  <style>
+    body { 
+      display: none; /* Hide the processor page */
+    }
+  </style>
+  <script>
+    // Configuration
+    const CONFIG = {
+      ASSETS: {
+        BTC: { id: "105", symbol: "btcusd" },
+        ETH: { id: "133", symbol: "ethusd" }
+      },
+      WS_URL: "wss://socket.delta.exchange",
+      PING_INTERVAL: 30000
+    };
+
+    let currentAsset = "BTC";
+    let websocket;
+    let priceHistory = [];
+
+    // Initialize WebSocket
+    function initWebSocket() {
+      websocket = new WebSocket(
+        `${CONFIG.WS_URL}/candles_1m_${CONFIG.ASSETS[currentAsset].id}`
+      );
+
+      websocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        processData(data);
+      };
+
+      websocket.onclose = () => {
+        setTimeout(initWebSocket, 5000); // Reconnect
+      };
+    }
+
+    // Process incoming data
+    function processData(data) {
+      const processed = {
+        asset: currentAsset,
+        price: parseFloat(data.p).toFixed(2),
+        time: new Date(data.t).toLocaleTimeString(),
+        signal: generateSignal(data.p),
+        sentiment: generateSentiment()
+      };
+
+      // Send to Blogger parent window
+      if (window.parent) {
+        window.parent.postMessage({
+          type: 'CRYPTO_UPDATE',
+          data: processed
+        }, '*');
+      }
+    }
+
+    // Generate trading signal
+    function generateSignal(price) {
+      priceHistory.push(parseFloat(price));
+      if (priceHistory.length > 3) priceHistory.shift();
+      
+      if (priceHistory.length === 3) {
+        const [p1, p2, p3] = priceHistory;
+        if (p3 > p2 && p2 > p1) return "BUY";
+        if (p3 < p2 && p2 < p1) return "SELL";
+      }
+      return "HOLD";
+    }
+
+    // Generate market sentiment
+    function generateSentiment() {
+      const rand = (Math.random() * 2 - 1).toFixed(2);
+      if (rand > 0.5) return `Bullish (${rand})`;
+      if (rand < -0.5) return `Bearish (${rand})`;
+      return `Neutral (${rand})`;
+    }
+
+    // Handle messages from Blogger
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'SWITCH_ASSET') {
+        currentAsset = event.data.asset;
+        if (websocket) websocket.close();
+        priceHistory = [];
+        initWebSocket();
+      }
+    });
+
+    // Initialize
+    initWebSocket();
+  </script>
+</head>
+<body>
+  <!-- This page has no visible content -->
+</body>
+</html>
